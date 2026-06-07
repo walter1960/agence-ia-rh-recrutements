@@ -4,7 +4,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export async function scorePdfCV(pdfBuffer: Buffer, jobCriteria: string): Promise<{ score: number, summary: string, name: string, email: string, phone: string }> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     const prompt = `
 Tu es un expert en recrutement (RH) ultra compétent.
@@ -61,7 +61,7 @@ Analyse le CV par rapport aux critères et retourne UNIQUEMENT cet objet JSON :
 
 export async function scoreCV(cvText: string, jobCriteria: string): Promise<{ score: number, summary: string, name: string, email: string, phone: string }> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     const prompt = `
 Tu es un expert en recrutement (RH) ultra compétent.

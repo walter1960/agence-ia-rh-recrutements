@@ -70,8 +70,8 @@ async function getValidGoogleToken(account: any) {
 }
 
 async function scanGmail(accessToken: string, job: any) {
-  const query = encodeURIComponent("has:attachment filename:pdf");
-  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=5`;
+  const query = encodeURIComponent("has:attachment filename:pdf newer_than:1d");
+  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=10`;
 
   const listRes = await fetch(listUrl, {
     headers: { Authorization: `Bearer ${accessToken}` }

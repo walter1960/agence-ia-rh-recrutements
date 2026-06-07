@@ -1,10 +1,7 @@
 import { prisma } from "./prisma";
-import { scoreCV } from "./gemini";
-
-const pdfParse = require("pdf-parse");
+import { scoreCV, scorePdfCV } from "./gemini";
 
 export async function scanEmailsForJob(jobId: string, userId: string) {
-  // 1. Get user's account to find the access token
   const account = await prisma.account.findFirst({
     where: { 
       userId, 
@@ -23,16 +20,14 @@ export async function scanEmailsForJob(jobId: string, userId: string) {
     const validToken = await getValidGoogleToken(account);
     await scanGmail(validToken, job);
   } else if (account.provider === "azure-ad") {
-    // Implement Azure AD token refresh here if needed later
     await scanOutlook(account.access_token, job);
   }
 
-  // 3. Update top candidates to SELECTED
   await updateTopCandidates(job.id, job.targetCount);
+  return { success: true };
 }
 
 async function getValidGoogleToken(account: any) {
-  // Check if token is expired or expires in less than 5 minutes
   const isExpired = !account.expires_at || account.expires_at * 1000 < Date.now() + 5 * 60 * 1000;
   
   if (!isExpired) {
@@ -100,7 +95,7 @@ async function scanGmail(accessToken: string, job: any) {
     let filename = "";
 
     for (const part of parts) {
-      if (part.filename && part.filename.toLowerCase().endsWith(".pdf") && part.body.attachmentId) {
+      if (part.filename && part.filename.toLowerCase().endsWith(".pdf") && part.body?.attachmentId) {
         attachmentId = part.body.attachmentId;
         filename = part.filename;
         break;
@@ -114,11 +109,21 @@ async function scanGmail(accessToken: string, job: any) {
       const attData = await attRes.json();
 
       if (attData.data) {
-        const b64 = attData.data.replace(/-/g, '+').replace(/_/, '/');
+        const b64 = attData.data.replace(/-/g, '+').replace(/_/g, '/');
         const buffer = Buffer.from(b64, 'base64');
         await processPdfBuffer(buffer, filename, job);
       }
     }
+    
+    // Mark as read
+    await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}/modify`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ removeLabelIds: ["UNREAD"] })
+    });
   }
 }
 
@@ -148,38 +153,36 @@ async function scanOutlook(accessToken: string, job: any) {
       if (att.name && att.name.toLowerCase().endsWith(".pdf") && att.contentBytes) {
         const buffer = Buffer.from(att.contentBytes, 'base64');
         await processPdfBuffer(buffer, att.name, job);
-        break; // Process one PDF per email to save time
+        break; 
       }
     }
   }
 }
 
 async function processPdfBuffer(buffer: Buffer, filename: string, job: any) {
-  let cvText = "";
   try {
-    const data = await pdfParse(buffer);
-    cvText = data.text || "";
-  } catch(e) {
-    console.error(`PDF Parse error for ${filename}`, e);
-  }
-
-  if (cvText.trim().length > 20) {
-    const aiResult = await scoreCV(cvText, job.criteria);
+    const aiResult = await scorePdfCV(buffer, job.criteria);
+    
+    // Ignore results with 0 score and empty name if AI failed completely
+    if (aiResult.score === 0 && !aiResult.name) {
+      console.log(`Skipped ${filename} because AI could not extract data properly.`);
+      return;
+    }
     
     await prisma.candidate.create({
       data: {
         jobId: job.id,
         name: aiResult.name || filename,
-        email: aiResult.email,
-        phone: aiResult.phone,
+        email: aiResult.email || "",
+        phone: aiResult.phone || "",
         score: aiResult.score,
         summary: aiResult.summary,
-        cvText: cvText.substring(0, 5000),
+        cvText: "(PDF analysé nativement par Gemini)",
         status: "PENDING"
       }
     });
-  } else {
-    console.log(`Skipped ${filename} because extracted text was too short (length: ${cvText.trim().length})`);
+  } catch(e) {
+    console.error(`Error processing PDF ${filename} with Gemini natively`, e);
   }
 }
 

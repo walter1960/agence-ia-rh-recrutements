@@ -4,7 +4,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export async function scorePdfCV(pdfBuffer: Buffer, jobCriteria: string): Promise<{ score: number, summary: string, name: string, email: string, phone: string }> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
     const prompt = `
 Tu es un expert en recrutement (RH) ultra compétent.

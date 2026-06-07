@@ -169,11 +169,42 @@ async function processPdfBuffer(buffer: Buffer, filename: string, job: any) {
       return;
     }
     
+    const email = aiResult.email?.trim() || "";
+    const name = aiResult.name?.trim() || filename;
+
+    let existingCandidate = null;
+    if (email) {
+      existingCandidate = await prisma.candidate.findFirst({
+        where: { jobId: job.id, email }
+      });
+    } else if (name && name !== filename) {
+      existingCandidate = await prisma.candidate.findFirst({
+        where: { jobId: job.id, name }
+      });
+    }
+
+    if (existingCandidate) {
+      if (aiResult.score > existingCandidate.score) {
+        await prisma.candidate.update({
+          where: { id: existingCandidate.id },
+          data: {
+            score: aiResult.score,
+            summary: aiResult.summary,
+            phone: aiResult.phone || existingCandidate.phone,
+            ...(email ? { email } : {})
+          }
+        });
+      } else {
+        console.log(`Skipped duplicate for ${name} because score was not higher.`);
+      }
+      return;
+    }
+
     await prisma.candidate.create({
       data: {
         jobId: job.id,
-        name: aiResult.name || filename,
-        email: aiResult.email || "",
+        name: name,
+        email: email,
         phone: aiResult.phone || "",
         score: aiResult.score,
         summary: aiResult.summary,

@@ -25,13 +25,58 @@ export async function scanEmailsForJob(jobId: string, userId: string) {
   if (!job) throw new Error("Job not found");
 
   if (account.provider === "google") {
-    await scanGmail(account.access_token, job);
+    const validToken = await getValidGoogleToken(account);
+    await scanGmail(validToken, job);
   } else if (account.provider === "azure-ad") {
+    // Implement Azure AD token refresh here if needed later
     await scanOutlook(account.access_token, job);
   }
 
   // 3. Update top candidates to SELECTED
   await updateTopCandidates(job.id, job.targetCount);
+}
+
+async function getValidGoogleToken(account: any) {
+  // Check if token is expired or expires in less than 5 minutes
+  const isExpired = !account.expires_at || account.expires_at * 1000 < Date.now() + 5 * 60 * 1000;
+  
+  if (!isExpired) {
+    return account.access_token;
+  }
+
+  if (!account.refresh_token) {
+    throw new Error("Token expiré et aucun refresh token disponible. Veuillez vous reconnecter.");
+  }
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      grant_type: "refresh_token",
+      refresh_token: account.refresh_token,
+    }),
+  });
+
+  const tokens = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`Erreur lors du rafraîchissement du token: ${JSON.stringify(tokens)}`);
+  }
+
+  const newExpiresAt = Math.floor(Date.now() / 1000) + tokens.expires_in;
+
+  await prisma.account.update({
+    where: { id: account.id },
+    data: {
+      access_token: tokens.access_token,
+      expires_at: newExpiresAt,
+      ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+    },
+  });
+
+  return tokens.access_token;
 }
 
 async function scanGmail(accessToken: string, job: any) {

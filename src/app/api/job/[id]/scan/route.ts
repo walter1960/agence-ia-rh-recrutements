@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { scanEmailsForJob } from "@/lib/scanner";
 
+export const maxDuration = 60; // Allow up to 60 seconds for processing multiple CVs
+
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id: jobId } = await context.params;
